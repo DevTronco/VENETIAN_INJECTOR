@@ -5,11 +5,30 @@
 #include <vector>
 #include <TlHelp32.h>
 
-#include "utils.h"
+DWORD GetProcessIdByName(const std::wstring& processName) {
+	DWORD pid = 0;
+	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
-#define PROCESSENTRY32
+	if (snapshot == INVALID_HANDLE_VALUE)
+		return 0;
 
-DWORD inject_utils::GetProcessIdByName(const std::wstring& processName);
+	PROCESSENTRY32W pe;
+	pe.dwSize = sizeof(PROCESSENTRY32W);
+
+	if (Process32FirstW(snapshot, &pe)) {
+		do {
+			std::wstring exeName = pe.szExeFile;
+
+			if (processName == exeName) {
+				pid = pe.th32ProcessID;
+				break;
+			}
+		} while (Process32NextW(snapshot, &pe));
+	}
+
+	CloseHandle(snapshot);
+	return pid;
+}
 
 bool Inject(DWORD pID, const std::string& dllPath) {
 	//proc handle
@@ -64,12 +83,12 @@ bool Inject(DWORD pID, const std::string& dllPath) {
 	}
 
 	//wait the thread to end
-	WaitForSingleObject(hProcess, INFINITE);
+	WaitForSingleObject(thread, INFINITE);
+	CloseHandle(thread);
 
 	//clean
 	VirtualFreeEx(hProcess, dllPathAddress, 0, MEM_RELEASE);
 	CloseHandle(hProcess);
-	return false;
 
 	return true;
 }
@@ -86,18 +105,21 @@ int main() {
 	std::getline(std::cin, dllPath);
 
 	//checks if process exists
-	DWORD processID = inject_utils::GetProcessIdByName(processName);
+	DWORD processID = GetProcessIdByName(processName);
 	if (processID == 0) {
 		std::cout << "Process not found!" << std::endl;
+		Sleep(200);
 		return 1;
 	}
 
 	//injects dll
 	if (Inject(processID, dllPath)) {
 		std::cout << "Succesfully injected!" << std::endl;
+		Sleep(200);
 	}
 	else {
-		std::cout << "Failed to inject DLL!" << GetLastError() << std::endl;
+		std::cout << "Failed to inject DLL! " << GetLastError() << std::endl;
+		Sleep(1000);
 	}
 
 	return 0;
